@@ -1,13 +1,23 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MODEL_TIERS } from "@/constants";
 
-// Standardizing on GEMINI_API_KEY for the environment
-const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
-const ai = new GoogleGenAI({ apiKey });
+// Lazy initialization to prevent build-time errors
+let ai: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (!ai) {
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+      throw new Error("API key must be set when using the Gemini API.");
+    }
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+};
 
 export const decomposeObjective = async (objective: string): Promise<Array<{ role: string; description: string; tier: 'FLASH' | 'PRO' }>> => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: MODEL_TIERS.PRO,
       contents: `Act as the Root Architect. Analyze the following high-level technical objective and decompose it into 3-5 specialized sub-agent roles required to execute it. 
       Objective: "${objective}"
@@ -52,7 +62,7 @@ export const decomposeObjective = async (objective: string): Promise<Array<{ rol
 
 export const proposeSubAgent = async (parentRole: string, currentContext: string): Promise<{ role: string; tier: 'FLASH' | 'PRO' }> => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: MODEL_TIERS.FLASH,
       contents: `You are the Root Architect. A parent agent "${parentRole}" is requesting additional resources.
       Current Context: "${currentContext}"
@@ -80,7 +90,7 @@ export const proposeSubAgent = async (parentRole: string, currentContext: string
 
 export const generateAgentLog = async (role: string, context: string): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: MODEL_TIERS.FLASH,
       contents: `You are a ${role}. The current context is "${context}". Generate a single short log line (max 15 words) looking like a system terminal output. Do not include timestamps.`,
       config: {
@@ -110,7 +120,7 @@ export const createAgentSession = (name: string, role: string, task: string) => 
     5. COMPLETION: End with "TASK_COMPLETE".
   `;
 
-  return ai.chats.create({
+  return getAI().chats.create({
     model: MODEL_TIERS.FLASH,
     config: { systemInstruction }
   });
